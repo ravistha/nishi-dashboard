@@ -9,6 +9,7 @@
     <!-- CDN Links -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Phosphor Icons -->
@@ -25,10 +26,33 @@
             scrollbar-width: none;
         }
 
+        /* Accessing specific teal colors via standard CSS for inputs */
         input[type=range] {
-            accent-color: #0d9488;
-            /* Teal-600 */
+            accent-color: #0C8CBE;
         }
+
+        /* Custom Brand Classes */
+        .bg-brand {
+            background-color: #0C8CBE;
+        }
+
+        .text-brand {
+            color: #0C8CBE;
+        }
+
+        .border-brand {
+            border-color: #0C8CBE;
+        }
+
+        .from-brand {
+            --tw-gradient-from: #0C8CBE;
+        }
+
+        .to-brand-dark {
+            --tw-gradient-to: #086a91;
+        }
+
+        /* Darker shade for gradient */
     </style>
     <!-- Error Handler for Local Debugging -->
     <script>
@@ -47,14 +71,42 @@
 <body class="bg-gray-50 text-gray-800 font-sans">
 
     <!-- Header -->
-    <header class="bg-white shadow-sm sticky top-0 z-50">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                <i class="ph ph-chart-polar text-teal-600"></i>
-                NISHI Index Dashboard
-            </h1>
-            <div id="connection-status" class="text-xs font-semibold text-gray-400">
-                Waiting for Script...
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="container mx-auto px-4 py-6">
+
+            <!-- Top Row: Logos & Status -->
+            <div class="flex justify-between items-center mb-6">
+                <!-- Logos -->
+                <div class="flex items-center gap-6">
+                    <img src="images/logo_1.png" alt="Nunavut Tunngavik" class="h-16 w-auto object-contain">
+                    <div class="h-10 w-px bg-gray-200 hidden md:block"></div>
+                    <img src="images/logo_3.png" alt="NISHI" class="h-12 w-auto object-contain hidden md:block">
+                </div>
+
+                <!-- Right Side: Status + Partner Logo -->
+                <div class="flex items-center gap-4">
+                    <div id="connection-status" class="text-xs font-semibold text-gray-400">
+                        Waiting for Script...
+                    </div>
+                    <img src="images/logo_2.png" alt="ACS AEC"
+                        class="h-10 w-auto object-contain opacity-80 hover:opacity-100">
+                </div>
+            </div>
+
+            <!-- Title & Description -->
+            <div class="max-w-5xl">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-900 mb-4 tracking-tight">
+                    Nunavut Inuit Sustainable Housing Index
+                </h1>
+                <p class="text-gray-600 leading-relaxed text-sm md:text-base border-l-4 border-brand pl-4">
+                    This dashboard presents composite index scores for communities across Nunavut, summarizing community
+                    conditions across five domains: Housing, Economic, Cultural, Health, and Social. Using the
+                    indicators from the Indigenous Peoples Survey (2022 cycle) and Census 2021, the indices provide a
+                    consistent way to compare patterns across communities and to track relative strengths and gaps
+                    within each domain.
+                    <br><br>
+                    <span class="font-semibold text-brand">The higher the score, the better the performance.</span>
+                </p>
             </div>
         </div>
     </header>
@@ -65,7 +117,7 @@
 
             <!-- Community Selector -->
             <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Select Community</label>
+                <label class="block text-sm font-semibold text-brand mb-2">Select Community</label>
                 <select id="community-select"
                     class="w-full p-3 bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 block">
                     <!-- Options populated by data.js -->
@@ -73,7 +125,7 @@
 
                 <div class="mt-4 flex bg-gray-100 rounded-lg p-1">
                     <button id="btn-base"
-                        class="flex-1 py-1 px-3 rounded-md text-sm font-medium transition-all bg-white shadow-sm text-teal-700">Base
+                        class="flex-1 py-1 px-3 rounded-md text-sm font-medium transition-all bg-white shadow-sm text-brand">Base
                         Scores</button>
                     <button id="btn-adjusted"
                         class="flex-1 py-1 px-3 rounded-md text-sm font-medium text-gray-500 transition-all hover:text-gray-700">Adjusted
@@ -86,11 +138,11 @@
                 class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 max-h-[calc(100vh-250px)] overflow-y-auto scrollbar-hide">
 
                 <!-- NEW: Instructions Block -->
-                <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100 text-sm text-blue-800">
+                <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100 text-sm text-brand">
                     <h3 class="font-bold mb-2 flex items-center gap-2">
                         <i class="ph ph-info"></i> How to Adjust Weights
                     </h3>
-                    <ul class="list-disc list-inside space-y-1 text-xs opacity-90">
+                    <ul class="list-disc list-inside space-y-1 text-xs opacity-90 text-gray-700">
                         <li><strong>Domains must sum to 100%</strong>. Use the sliders to adjust importance.</li>
                         <li><strong>Indicators must also sum to 100%</strong> within each domain.</li>
                         <li>Uncheck an indicator to <span class="font-bold">exclude</span> it completely.</li>
@@ -116,13 +168,13 @@
             <!-- Top Score Cards -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div
-                    class="bg-gradient-to-br from-teal-600 to-teal-800 text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
+                    class="bg-gradient-to-br from-[#0C8CBE] to-[#086a91] text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
                     <div class="relative z-10">
-                        <p class="text-teal-100 text-sm font-medium uppercase tracking-wider">Overall Index Score</p>
+                        <p class="text-white text-sm font-medium uppercase tracking-wider">Overall Index Score</p>
                         <h2 id="overall-score-display" class="text-5xl font-bold mt-2">--</h2>
                     </div>
                     <i
-                        class="ph ph-trophy absolute -right-4 -bottom-4 text-9xl text-teal-500 opacity-20 transform rotate-12"></i>
+                        class="ph ph-trophy absolute -right-4 -bottom-4 text-9xl text-white opacity-20 transform rotate-12"></i>
                 </div>
 
                 <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
@@ -153,7 +205,7 @@
             <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
                 <div class="flex justify-between items-center cursor-pointer" onclick="toggleDetailsTable()">
                     <h3 class="text-lg font-bold text-gray-800">Detailed Indicator Data</h3>
-                    <button class="flex items-center gap-1 text-teal-600 font-semibold text-sm hover:underline">
+                    <button class="flex items-center gap-1 text-brand font-semibold text-sm hover:underline">
                         <span id="details-toggle-text">Show Data</span>
                         <i id="details-toggle-icon" class="ph ph-caret-down"></i>
                     </button>
@@ -206,10 +258,10 @@
             excludedIndicators: {} // New: Track excluded indicators per domain
         };
 
-        // Colors
+        // Colors (UPDATED BRAND)
         const CHART_COLORS = {
-            primary: 'rgba(13, 148, 136, 0.6)',
-            primaryBorder: 'rgba(13, 148, 136, 1)',
+            primary: 'rgba(12, 140, 190, 0.6)',      // #0C8CBE (Brand Blue)
+            primaryBorder: 'rgba(12, 140, 190, 1)',  // Solid Brand Blue
             secondary: 'rgba(148, 163, 184, 0.4)',
             secondaryBorder: 'rgba(148, 163, 184, 1)'
         };
@@ -444,7 +496,6 @@
             const domainSection = document.createElement('div');
             domainSection.className = 'border-b border-gray-100 pb-4';
 
-            // Calculate current total
             const domainTotal = Object.values(appState.domainWeights).reduce((a, b) => a + b, 0) * 100;
             const isDomainValid = Math.abs(domainTotal - 100) < 0.1;
             const domainColor = isDomainValid ? 'text-green-600' : 'text-red-500';
@@ -456,7 +507,7 @@
                 </div>
             `;
 
-            const currentDomains = appState.metaDomains;
+            const currentDomains = appState.metaDomains || {};
             Object.keys(currentDomains).forEach(domain => {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'mb-3';
@@ -476,9 +527,6 @@
                     const val = parseInt(e.target.value);
                     appState.domainWeights[domain] = val / 100;
                     wrapper.querySelector(`#val-domain-${domain}`).textContent = `${val}%`;
-
-                    // Trigger refresh to update validation colors
-                    // Optimized: Debounce could be added here if needed
                     generateWeightControls();
                     updateDashboard();
                 });
@@ -521,7 +569,7 @@
                     wrapper.innerHTML = `
                         <div class="flex justify-between text-xs mb-1 items-center">
                             <div class="flex items-center gap-2 overflow-hidden">
-                                <input type="checkbox" class="rounded text-teal-600 focus:ring-teal-500" 
+                                <input type="checkbox" class="rounded text-brand focus:ring-[#0C8CBE]" 
                                     ${!isExcluded ? 'checked' : ''}>
                                 <span class="text-gray-600 truncate ${opacityClass}" title="${ind}">${ind}</span>
                             </div>
@@ -791,7 +839,8 @@
                 miniChartInstance.data.datasets = [{
                     label: 'Domain Score',
                     data: Object.values(domainScores),
-                    backgroundColor: Object.values(domainScores).map(v => v > 80 ? '#0d9488' : '#2dd4bf'),
+                    // Use Brand Color (#0C8CBE) for high scores, lighter for lower
+                    backgroundColor: Object.values(domainScores).map(v => v > 80 ? '#0C8CBE' : '#38bdf8'),
                     borderRadius: 4
                 }];
                 miniChartInstance.update();
@@ -808,7 +857,7 @@
                     {
                         label: appState.selectedCommunity,
                         data: Object.values(domainScores),
-                        backgroundColor: CHART_COLORS.primaryBorder, // Solid teal
+                        backgroundColor: CHART_COLORS.primaryBorder, // Solid Brand
                         borderRadius: 4
                     },
                     {
@@ -819,10 +868,6 @@
                     }
                 ];
                 radarChartInstance.update();
-
-                // Update Comparison Chart
-                // ... (Comparison logic is below, safe to let it fall through if inside else block, 
-                // but for simplicity, I'll keep the block structure clean)
             }
 
             // Update Comparison Chart (Defensive)
@@ -832,7 +877,10 @@
                     score: calculateOverallScore(d)
                 }));
                 comparisonChartInstance.data.labels = comparisonData.map(d => d.label);
-                const bgColors = comparisonData.map(d => d.label === appState.selectedCommunity ? '#0d9488' : '#cbd5e1');
+
+                // Highlight selected community with brand color
+                const bgColors = comparisonData.map(d => d.label === appState.selectedCommunity ? '#0C8CBE' : '#cbd5e1');
+
                 comparisonChartInstance.data.datasets = [{
                     label: 'Overall Index',
                     data: comparisonData.map(d => d.score),
@@ -842,12 +890,12 @@
                 comparisonChartInstance.update();
             }
 
-
             // Refresh Table if open
             if (!document.getElementById('details-table-container').classList.contains('hidden')) {
                 renderDetailsTable();
             }
         }
+
     </script>
 </body>
 
