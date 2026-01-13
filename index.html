@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nunavut Community Index Dashboard</title>
+
+    <!-- CDN Links -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        /* Custom Scrollbar for the weight panel */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        input[type=range] {
+            accent-color: #0d9488;
+            /* Teal-600 */
+        }
+    </style>
+    <!-- Error Handler for Local Debugging -->
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            const statusEl = document.getElementById('connection-status');
+            if (statusEl) {
+                statusEl.textContent = "Script Error!";
+                statusEl.className = "text-xs font-semibold text-red-600";
+            }
+            alert("Javascript Error:\n" + msg + "\n\nLine: " + line + "\n\nCheck console for details.");
+            return false;
+        };
+    </script>
+</head>
+
+<body class="bg-gray-50 text-gray-800 font-sans">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <i class="ph ph-chart-polar text-teal-600"></i>
+                NISHI Index Dashboard
+            </h1>
+            <div id="connection-status" class="text-xs font-semibold text-gray-400">
+                Waiting for Script...
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Controls Sidebar -->
+        <aside class="lg:col-span-4 space-y-6">
+
+            <!-- Community Selector -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Select Community</label>
+                <select id="community-select"
+                    class="w-full p-3 bg-gray-50 border border-gray-300 text-gray-900 rounded-lg focus:ring-teal-500 focus:border-teal-500 block">
+                    <!-- Options populated by data.js -->
+                </select>
+
+                <div class="mt-4 flex bg-gray-100 rounded-lg p-1">
+                    <button id="btn-base"
+                        class="flex-1 py-1 px-3 rounded-md text-sm font-medium transition-all bg-white shadow-sm text-teal-700">Base
+                        Scores</button>
+                    <button id="btn-adjusted"
+                        class="flex-1 py-1 px-3 rounded-md text-sm font-medium text-gray-500 transition-all hover:text-gray-700">Adjusted
+                        Model</button>
+                </div>
+            </div>
+
+            <!-- Weighting Controls -->
+            <div
+                class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 max-h-[calc(100vh-250px)] overflow-y-auto scrollbar-hide">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">Custom Weights</h2>
+                    <button id="reset-weights" class="text-xs text-red-500 hover:underline">Reset Default</button>
+                </div>
+
+                <div id="weight-controls-container" class="space-y-6">
+                    <!-- Dynamic weight controls generated here -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard Area -->
+        <section class="lg:col-span-8 space-y-6">
+
+            <!-- Top Score Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div
+                    class="bg-gradient-to-br from-teal-600 to-teal-800 text-white p-6 rounded-xl shadow-lg relative overflow-hidden">
+                    <div class="relative z-10">
+                        <p class="text-teal-100 text-sm font-medium uppercase tracking-wider">Overall Index Score</p>
+                        <h2 id="overall-score-display" class="text-5xl font-bold mt-2">--</h2>
+                    </div>
+                    <i
+                        class="ph ph-trophy absolute -right-4 -bottom-4 text-9xl text-teal-500 opacity-20 transform rotate-12"></i>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                    <h3 class="text-gray-500 text-sm font-medium uppercase tracking-wider mb-2">Domain Breakdown</h3>
+                    <div class="h-32">
+                        <canvas id="mini-barchart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Domain Charts -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Domain Performance (vs Average)</h3>
+                <div class="h-64 md:h-80">
+                    <canvas id="main-radar-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Comparison Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                <h3 class="text-lg font-bold text-gray-800 mb-4">Regional Comparison</h3>
+                <div class="h-64">
+                    <canvas id="comparison-bar-chart"></canvas>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <footer class="text-center py-6 text-gray-400 text-sm">
+        <p>&copy; 2025 Nunavut Index Dashboard</p>
+    </footer>
+
+    <!-- Main Logic Inlined -->
+    <script>
+        console.log("Script block started executing...");
+
+        // --- SUPABASE CONFIGURATION ---
+        const SUPABASE_URL = 'https://kcszjiqtbqjvixtwxuqr.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_MsEerYlBvya2zB53sDSadA_x9p8Jlcr';
+        const SUPABASE_TABLE_NAME = 'NISHI Index Database';
+
+        // Initialize Supabase safely
+        let supabaseClient;
+
+        // State
+        let appState = {
+            data: [],
+            selectedCommunity: null,
+            scoreType: 'Base',
+            weights: {},
+            domainWeights: {},
+            metaDomains: {},
+            excludedIndicators: {} // New: Track excluded indicators per domain
+        };
+
+        // Colors
+        const CHART_COLORS = {
+            primary: 'rgba(13, 148, 136, 0.6)',
+            primaryBorder: 'rgba(13, 148, 136, 1)',
+            secondary: 'rgba(148, 163, 184, 0.4)',
+            secondaryBorder: 'rgba(148, 163, 184, 1)'
+        };
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        async function initApp() {
+            // Check if Supabase SDK is available
+            if (!window.supabase) {
+                alert("Critical Error: Supabase SDK failed to load.\n\nPossible causes:\n1. No internet connection\n2. Ad-blocker blocking scripts\n3. Firewall blocking cdn.jsdelivr.net");
+                return;
+            }
+            // Initialize here to be safe
+            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+            await fetchDataFromSupabase();
+            initUI();
+            initCharts();
+            updateDashboard();
+        }
+
+        async function fetchDataFromSupabase() {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.textContent = "Connecting...";
+            console.log(`Attempting to fetch from table: "${SUPABASE_TABLE_NAME}"`);
+
+            try {
+                // Timeout logic
+                const timeout = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("Request timed out (10s)")), 10000)
+                );
+
+                const { data, error } = await Promise.race([
+                    supabaseClient.from(SUPABASE_TABLE_NAME).select('*'),
+                    timeout
+                ]);
+
+                if (error) {
+                    console.error("Supabase API Error:", error);
+                    throw error;
+                }
+
+                if (!data || data.length === 0) {
+                    statusEl.textContent = "Connected: Table Empty";
+                    statusEl.className = "text-xs font-semibold text-orange-500";
+                    alert(`Connected to Supabase, but table '${SUPABASE_TABLE_NAME}' is empty.`);
+                    return;
+                }
+
+                statusEl.textContent = "Live Data Connected";
+                statusEl.className = "text-xs font-semibold text-green-600";
+                console.log(`Loaded ${data.length} rows.`);
+
+                // Robust Column Detection
+                const firstRow = data[0];
+                const keys = Object.keys(firstRow);
+                const findKey = (query) => keys.find(k => k.toLowerCase().includes(query.toLowerCase()));
+
+                const communityKey = findKey('community') || findKey('geo') || findKey('region');
+                const domainKey = findKey('domain');
+                const indKey = findKey('indicator') || findKey('variable');
+                const baseKey = findKey('base') || findKey('score');
+                const adjKey = findKey('adjust') || findKey('model');
+
+                if (!communityKey || !domainKey || !indKey) {
+                    alert(`Connected, but columns are missing.\n\nFound: ${keys.join(', ')}`);
+                    return;
+                }
+
+                // Transform Data
+                const pivotMap = {};
+                const newDomains = {};
+
+                data.forEach(row => {
+                    const comm = row[communityKey];
+                    const domain = row[domainKey];
+                    const ind = row[indKey];
+                    const base = baseKey ? parseFloat(row[baseKey]) : 0;
+                    const adj = adjKey ? parseFloat(row[adjKey]) : base;
+
+                    if (!comm || !domain) return;
+
+                    if (!pivotMap[comm]) pivotMap[comm] = { Community: comm };
+
+                    pivotMap[comm][`${domain}_${ind}_Base`] = base;
+                    pivotMap[comm][`${domain}_${ind}_Adjusted`] = adj;
+
+                    if (!newDomains[domain]) newDomains[domain] = new Set();
+                    newDomains[domain].add(ind);
+                });
+
+                appState.data = Object.values(pivotMap);
+                appState.metaDomains = {};
+                Object.keys(newDomains).forEach(d => {
+                    appState.metaDomains[d] = Array.from(newDomains[d]);
+                });
+
+                console.log("Transformed Data:", appState.data);
+                console.log("Meta Domains:", appState.metaDomains);
+
+                if (appState.data.length === 0) {
+                    alert("Data Error: Rows loaded but transformation resulted in 0 communities. Check column mapping logs.");
+                }
+
+                appState.selectedCommunity = appState.data[0]?.Community || '';
+                initWeights(); // Initialize with new default logic
+
+            } catch (err) {
+                console.error("Supabase Error:", err);
+                statusEl.textContent = "Connection Failed";
+                statusEl.className = "text-xs font-semibold text-red-600";
+                let msg = err.message;
+                if (msg.includes("timed out")) msg = "Connection timed out. Check internet.";
+                alert(`Failed to connect.\n\nError: ${msg}`);
+            }
+        }
+
+        function initWeights() {
+            const domains = appState.metaDomains;
+            appState.domainWeights = {};
+            appState.weights = {};
+            appState.excludedIndicators = {};
+
+            if (!domains) return;
+
+            // 1. Set Default Domain Weights
+            const orderedDomains = Object.keys(domains);
+
+            // Default Policy: Housing 40%, Economic 30%, Others 10%
+            // Note: This matches "Housing", "Economic" names specifically.
+            // If names differ in CSV, it falls back to equal distribution.
+
+            const defaults = {
+                'housing': 40,
+                'economic': 30
+            };
+
+            let remainingWeight = 100;
+            let assignedCount = 0;
+
+            orderedDomains.forEach(d => {
+                const lower = d.toLowerCase();
+                if (defaults[lower] !== undefined) {
+                    appState.domainWeights[d] = defaults[lower] / 100;
+                    remainingWeight -= defaults[lower];
+                    assignedCount++;
+                }
+            });
+
+            // Distribute remaining weight equally among non-default domains
+            const unassignedCount = orderedDomains.length - assignedCount;
+            if (unassignedCount > 0) {
+                const equalShare = remainingWeight / unassignedCount;
+                orderedDomains.forEach(d => {
+                    if (appState.domainWeights[d] === undefined) {
+                        appState.domainWeights[d] = equalShare / 100;
+                    }
+                });
+            }
+
+            // 2. Set Default Indicator Weights (Equal Distribution)
+            Object.keys(domains).forEach(domain => {
+                appState.weights[domain] = {};
+                appState.excludedIndicators[domain] = new Set(); // Start with none excluded
+
+                const indicators = domains[domain];
+                const count = indicators.length;
+                const weight = count > 0 ? (1.0 / count) : 0;
+
+                indicators.forEach(ind => {
+                    appState.weights[domain][ind] = weight;
+                });
+            });
+        }
+
+        function initUI() {
+            const select = document.getElementById('community-select');
+            select.innerHTML = '';
+            if (appState.data.length === 0) {
+                const opt = document.createElement('option');
+                opt.textContent = "No Data Loaded";
+                select.appendChild(opt);
+            }
+            appState.data.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.Community;
+                option.textContent = c.Community;
+                select.appendChild(option);
+            });
+            select.addEventListener('change', (e) => {
+                appState.selectedCommunity = e.target.value;
+                updateDashboard();
+            });
+
+            document.getElementById('btn-base').addEventListener('click', () => setScoreType('Base'));
+            document.getElementById('btn-adjusted').addEventListener('click', () => setScoreType('Adjusted'));
+            document.getElementById('reset-weights').addEventListener('click', resetWeights);
+
+            if (appState.metaDomains && Object.keys(appState.metaDomains).length > 0) {
+                generateWeightControls();
+            }
+        }
+
+        function setScoreType(type) {
+            appState.scoreType = type;
+            const btnBase = document.getElementById('btn-base');
+            const btnAdj = document.getElementById('btn-adjusted');
+
+            if (type === 'Base') {
+                btnBase.classList.replace('text-gray-500', 'text-teal-700');
+                btnBase.classList.replace('bg-white', 'bg-white');
+                btnBase.classList.add('shadow-sm');
+                btnAdj.classList.replace('text-teal-700', 'text-gray-500');
+                btnAdj.classList.remove('shadow-sm', 'bg-white');
+            } else {
+                btnAdj.classList.replace('text-gray-500', 'text-teal-700');
+                btnAdj.classList.add('shadow-sm', 'bg-white');
+                btnBase.classList.replace('text-teal-700', 'text-gray-500');
+                btnBase.classList.remove('shadow-sm', 'bg-white');
+            }
+            updateDashboard();
+        }
+
+        function generateWeightControls() {
+            const container = document.getElementById('weight-controls-container');
+            container.innerHTML = '';
+
+            // --- 1. Domain Weights Section ---
+            const domainSection = document.createElement('div');
+            domainSection.className = 'border-b border-gray-100 pb-4';
+
+            // Calculate current total
+            const domainTotal = Object.values(appState.domainWeights).reduce((a, b) => a + b, 0) * 100;
+            const isDomainValid = Math.abs(domainTotal - 100) < 0.1;
+            const domainColor = isDomainValid ? 'text-green-600' : 'text-red-500';
+
+            domainSection.innerHTML = `
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-sm font-bold text-gray-900">Domain Importance</h4>
+                    <span class="text-xs font-bold ${domainColor}">Total: ${Math.round(domainTotal)}%</span>
+                </div>
+            `;
+
+            const currentDomains = appState.metaDomains;
+            Object.keys(currentDomains).forEach(domain => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'mb-3';
+                const currentWeight = (appState.domainWeights[domain] * 100).toFixed(0);
+
+                wrapper.innerHTML = `
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="font-medium text-gray-700">${domain}</span>
+                        <span class="text-gray-500" id="val-domain-${domain}">${currentWeight}%</span>
+                    </div>
+                    <input type="range" min="0" max="100" step="1" value="${currentWeight}" 
+                        class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        data-domain="${domain}">`;
+
+                const input = wrapper.querySelector('input');
+                input.addEventListener('input', (e) => {
+                    const val = parseInt(e.target.value);
+                    appState.domainWeights[domain] = val / 100;
+                    wrapper.querySelector(`#val-domain-${domain}`).textContent = `${val}%`;
+
+                    // Trigger refresh to update validation colors
+                    // Optimized: Debounce could be added here if needed
+                    generateWeightControls();
+                    updateDashboard();
+                });
+                domainSection.appendChild(wrapper);
+            });
+            container.appendChild(domainSection);
+
+            // --- 2. Indicator Weights Section ---
+            Object.entries(currentDomains).forEach(([domain, indicators]) => {
+                const indSection = document.createElement('div');
+                indSection.className = 'mt-4 pt-2';
+
+                // Calculate current total for this domain
+                let indTotal = 0;
+                indicators.forEach(ind => {
+                    if (!appState.excludedIndicators[domain].has(ind)) {
+                        indTotal += (appState.weights[domain][ind] || 0);
+                    }
+                });
+                indTotal *= 100;
+
+                const isIndValid = Math.abs(indTotal - 100) < 0.1;
+                const indColor = isIndValid ? 'text-green-600' : 'text-red-500';
+
+                indSection.innerHTML = `
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider">${domain}</h4>
+                        <span class="text-xs font-bold ${indColor}">Total: ${Math.round(indTotal)}%</span>
+                    </div>
+                `;
+
+                indicators.forEach(ind => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'mb-3 pl-2 border-l-2 border-gray-100';
+                    const safeId = ind.replace(/[^a-zA-Z0-9]/g, '-');
+                    const isExcluded = appState.excludedIndicators[domain].has(ind);
+                    const currentWeight = (appState.weights[domain][ind] * 100).toFixed(0);
+                    const opacityClass = isExcluded ? 'opacity-50' : '';
+
+                    wrapper.innerHTML = `
+                        <div class="flex justify-between text-xs mb-1 items-center">
+                            <div class="flex items-center gap-2 overflow-hidden">
+                                <input type="checkbox" class="rounded text-teal-600 focus:ring-teal-500" 
+                                    ${!isExcluded ? 'checked' : ''}>
+                                <span class="text-gray-600 truncate ${opacityClass}" title="${ind}">${ind}</span>
+                            </div>
+                            <span class="text-gray-400 ${opacityClass}" id="val-ind-${domain}-${safeId}">${isExcluded ? 'OFF' : currentWeight + '%'}</span>
+                        </div>
+                        <input type="range" min="0" max="100" step="1" value="${currentWeight}" 
+                            class="w-full h-1 bg-gray-100 rounded-lg appearance-none cursor-pointer ${opacityClass}"
+                            ${isExcluded ? 'disabled' : ''}>`;
+
+                    // Handler: Checkbox (Include/Exclude)
+                    const checkbox = wrapper.querySelector('input[type=checkbox]');
+                    checkbox.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            appState.excludedIndicators[domain].delete(ind);
+                        } else {
+                            appState.excludedIndicators[domain].add(ind);
+                        }
+                        generateWeightControls();
+                        updateDashboard();
+                    });
+
+                    // Handler: Slider
+                    const input = wrapper.querySelector('input[type=range]');
+                    input.addEventListener('input', (e) => {
+                        const val = parseInt(e.target.value);
+                        appState.weights[domain][ind] = val / 100;
+                        wrapper.querySelector(`#val-ind-${domain}-${safeId}`).textContent = `${val}%`;
+                        generateWeightControls(); // Refresh validation
+                        updateDashboard();
+                    });
+
+                    indSection.appendChild(wrapper);
+                });
+                container.appendChild(indSection);
+            });
+        }
+
+        function resetWeights() {
+            initWeights(); // Re-run init to restore defaults (40/30/10)
+            generateWeightControls(); // Re-build UI
+            updateDashboard();
+        }
+
+        function calculateDomainScore(communityData, domain) {
+            if (!communityData) return 0;
+            const currentDomains = appState.metaDomains || {};
+            const indicators = currentDomains[domain];
+            if (!indicators) return 0;
+
+            let totalWeightedScore = 0;
+            let totalWeight = 0;
+
+            indicators.forEach(ind => {
+                // Skip if excluded
+                if (appState.excludedIndicators[domain].has(ind)) return;
+
+                const domainWeights = appState.weights[domain];
+                const weight = domainWeights ? (domainWeights[ind] || 0) : 0;
+
+                const key = `${domain}_${ind}_${appState.scoreType}`;
+                const rawScore = communityData[key] || 0;
+
+                totalWeightedScore += rawScore * weight;
+                // Accumulate weight only for included indicators
+                totalWeight += weight;
+            });
+
+            // If total weight is effectively 0 (e.g. all unchecked), return 0
+            // Otherwise, we strictly sum the weighted scores. 
+            // NOTE: If weights sum to 0.8 (80%), the result is essentially scaled to that 80%.
+            // If the requirement is to normalize (i.e. if user inputs 50% + 40% = 90%, should we divide by 0.9?),
+            // Standard index methodologies usually REQUIRE weights to sum to 1.
+            // Here, we follow the "Strict 100%" rule the user asked for. 
+            // If they sum to 90%, the index score will be lower than expected (out of 90, effectively).
+            // This incentivizes them to fix the weights.
+
+            return totalWeightedScore;
+        }
+
+        function calculateOverallScore(communityData) {
+            let totalWeightedScore = 0;
+            // Strict 100% rule: We do NOT divide by totalWeight. 
+            // The weights themselves must sum to 1.0 (100%).
+
+            const currentDomains = appState.metaDomains || {};
+            Object.keys(currentDomains).forEach(domain => {
+                const domainWeight = appState.domainWeights[domain] || 0;
+                const domainScore = calculateDomainScore(communityData, domain);
+                totalWeightedScore += domainScore * domainWeight;
+            });
+
+            return totalWeightedScore;
+        }
+
+        let radarChartInstance = null;
+        let comparisonChartInstance = null;
+        let miniChartInstance = null;
+
+        function initCharts() {
+            if (!window.Chart) {
+                console.error("Chart.js not loaded");
+                return;
+            }
+            const ctxMini = document.getElementById('mini-barchart').getContext('2d');
+            miniChartInstance = new Chart(ctxMini, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 100, display: false }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }
+                }
+            });
+
+            const ctxRadar = document.getElementById('main-radar-chart').getContext('2d');
+            radarChartInstance = new Chart(ctxRadar, {
+                type: 'radar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { r: { min: 0, max: 100, pointLabels: { font: { size: 12, weight: 'bold' } }, grid: { color: 'rgba(0,0,0,0.05)' } } }
+                }
+            });
+
+            const ctxComp = document.getElementById('comparison-bar-chart').getContext('2d');
+            comparisonChartInstance = new Chart(ctxComp, {
+                type: 'bar',
+                data: { labels: [], datasets: [] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, max: 100 } }
+                }
+            });
+        }
+
+        function updateDashboard() {
+            console.log("updateDashboard called. Selected:", appState.selectedCommunity);
+            const selectedData = appState.data.find(d => d.Community === appState.selectedCommunity);
+
+            if (!selectedData) {
+                console.warn("No data found for selected community:", appState.selectedCommunity);
+                return;
+            }
+
+            const domainScores = {};
+            const currentDomains = appState.metaDomains || {};
+            Object.keys(currentDomains).forEach(d => {
+                domainScores[d] = calculateDomainScore(selectedData, d);
+            });
+            const overallScore = calculateOverallScore(selectedData);
+            document.getElementById('overall-score-display').textContent = overallScore.toFixed(1);
+
+            miniChartInstance.data.labels = Object.keys(domainScores);
+            miniChartInstance.data.datasets = [{
+                label: 'Domain Score',
+                data: Object.values(domainScores),
+                backgroundColor: Object.values(domainScores).map(v => v > 80 ? '#0d9488' : '#2dd4bf'),
+                borderRadius: 4
+            }];
+            miniChartInstance.update();
+
+            const avgScores = {};
+            Object.keys(currentDomains).forEach(d => {
+                const sum = appState.data.reduce((acc, curr) => acc + calculateDomainScore(curr, d), 0);
+                avgScores[d] = sum / (appState.data.length || 1);
+            });
+
+            radarChartInstance.data.labels = Object.keys(domainScores);
+            radarChartInstance.data.datasets = [
+                {
+                    label: appState.selectedCommunity,
+                    data: Object.values(domainScores),
+                    backgroundColor: CHART_COLORS.primary,
+                    borderColor: CHART_COLORS.primaryBorder,
+                    borderWidth: 2,
+                    pointBackgroundColor: CHART_COLORS.primaryBorder
+                },
+                {
+                    label: 'Territory Average',
+                    data: Object.values(avgScores),
+                    backgroundColor: CHART_COLORS.secondary,
+                    borderColor: CHART_COLORS.secondaryBorder,
+                    borderWidth: 1,
+                    pointBackgroundColor: CHART_COLORS.secondaryBorder,
+                    borderDash: [5, 5]
+                }
+            ];
+            radarChartInstance.update();
+
+            const comparisonData = appState.data.map(d => ({
+                label: d.Community,
+                score: calculateOverallScore(d)
+            }));
+            comparisonChartInstance.data.labels = comparisonData.map(d => d.label);
+            const bgColors = comparisonData.map(d => d.label === appState.selectedCommunity ? '#0d9488' : '#cbd5e1');
+            comparisonChartInstance.data.datasets = [{
+                label: 'Overall Index',
+                data: comparisonData.map(d => d.score),
+                backgroundColor: bgColors,
+                borderRadius: 4
+            }];
+            comparisonChartInstance.update();
+        }
+    </script>
+</body>
+
+</html>
