@@ -84,6 +84,21 @@
             <!-- Weighting Controls -->
             <div
                 class="bg-white p-6 rounded-xl shadow-lg border border-gray-100 max-h-[calc(100vh-250px)] overflow-y-auto scrollbar-hide">
+
+                <!-- NEW: Instructions Block -->
+                <div class="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-100 text-sm text-blue-800">
+                    <h3 class="font-bold mb-2 flex items-center gap-2">
+                        <i class="ph ph-info"></i> How to Adjust Weights
+                    </h3>
+                    <ul class="list-disc list-inside space-y-1 text-xs opacity-90">
+                        <li><strong>Domains must sum to 100%</strong>. Use the sliders to adjust importance.</li>
+                        <li><strong>Indicators must also sum to 100%</strong> within each domain.</li>
+                        <li>Uncheck an indicator to <span class="font-bold">exclude</span> it completely.</li>
+                        <li>The <span class="font-bold text-red-500">Red Text</span> will warn you if totals are off.
+                        </li>
+                    </ul>
+                </div>
+
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-bold text-gray-800">Custom Weights</h2>
                     <button id="reset-weights" class="text-xs text-red-500 hover:underline">Reset Default</button>
@@ -131,6 +146,33 @@
                 <h3 class="text-lg font-bold text-gray-800 mb-4">Regional Comparison</h3>
                 <div class="h-64">
                     <canvas id="comparison-bar-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- NEW: Detailed Data Section -->
+            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+                <div class="flex justify-between items-center cursor-pointer" onclick="toggleDetailsTable()">
+                    <h3 class="text-lg font-bold text-gray-800">Detailed Indicator Data</h3>
+                    <button class="flex items-center gap-1 text-teal-600 font-semibold text-sm hover:underline">
+                        <span id="details-toggle-text">Show Data</span>
+                        <i id="details-toggle-icon" class="ph ph-caret-down"></i>
+                    </button>
+                </div>
+                <!-- Hidden by default -->
+                <div id="details-table-container" class="hidden mt-6 overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-600">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                            <tr>
+                                <th class="px-4 py-3">Domain</th>
+                                <th class="px-4 py-3">Indicator</th>
+                                <th class="px-4 py-3 text-right">Score</th>
+                                <th class="px-4 py-3 text-right">Weight Impact</th>
+                            </tr>
+                        </thead>
+                        <tbody id="details-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -579,33 +621,70 @@
         let miniChartInstance = null;
 
         function initCharts() {
+            console.log("initCharts: Starting...");
+
             if (!window.Chart) {
-                console.error("Chart.js not loaded");
+                console.error("initCharts: Chart.js global not found!");
+                alert("Error: Chart.js library not loaded. Check internet connection.");
                 return;
             }
-            const ctxMini = document.getElementById('mini-barchart').getContext('2d');
+
+            // Check Plugin
+            if (window.ChartDataLabels) {
+                console.log("initCharts: Registering ChartDataLabels plugin.");
+                Chart.register(ChartDataLabels);
+            } else {
+                console.warn("initCharts: ChartDataLabels plugin not found. Labels will be missing.");
+            }
+
+            // Common Options for Datalabels
+            const labelOptions = {
+                color: '#333',
+                anchor: 'end',
+                align: 'top',
+                offset: -2,
+                font: { size: 10, weight: 'bold' },
+                formatter: (value) => Math.round(value)
+            };
+
+            // 1. Mini Breakdown Chart (Bar)
+            const canvasMini = document.getElementById('mini-barchart');
+            if (!canvasMini) { console.error("initCharts: Canvas #mini-barchart not found!"); return; }
+
+            const ctxMini = canvasMini.getContext('2d');
             miniChartInstance = new Chart(ctxMini, {
                 type: 'bar',
                 data: { labels: [], datasets: [] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { ...labelOptions, color: '#fff', align: 'center', anchor: 'center' } // Success bars use white text inside
+                    },
                     scales: { y: { beginAtZero: true, max: 100, display: false }, x: { grid: { display: false }, ticks: { font: { size: 10 } } } }
                 }
             });
 
+            // 2. Main Performance Chart (Switched from Radar to Grouped Bar)
             const ctxRadar = document.getElementById('main-radar-chart').getContext('2d');
             radarChartInstance = new Chart(ctxRadar, {
-                type: 'radar',
+                type: 'bar',
                 data: { labels: [], datasets: [] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: { r: { min: 0, max: 100, pointLabels: { font: { size: 12, weight: 'bold' } }, grid: { color: 'rgba(0,0,0,0.05)' } } }
+                    plugins: {
+                        datalabels: labelOptions
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
                 }
             });
 
+            // 3. Comparison Chart
             const ctxComp = document.getElementById('comparison-bar-chart').getContext('2d');
             comparisonChartInstance = new Chart(ctxComp, {
                 type: 'bar',
@@ -613,9 +692,71 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { ...labelOptions, color: '#fff', anchor: 'center', align: 'center', rotation: -90 }
+                    },
                     scales: { y: { beginAtZero: true, max: 100 } }
                 }
+            });
+        }
+
+        function toggleDetailsTable() {
+            const container = document.getElementById('details-table-container');
+            const toggleText = document.getElementById('details-toggle-text');
+            const toggleIcon = document.getElementById('details-toggle-icon');
+
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                toggleText.textContent = "Hide Data";
+                toggleIcon.classList.replace('ph-caret-down', 'ph-caret-up');
+                renderDetailsTable();
+            } else {
+                container.classList.add('hidden');
+                toggleText.textContent = "Show Data";
+                toggleIcon.classList.replace('ph-caret-up', 'ph-caret-down');
+            }
+        }
+
+        function renderDetailsTable() {
+            const tbody = document.getElementById('details-table-body');
+            tbody.innerHTML = '';
+
+            const selectedData = appState.data.find(d => d.Community === appState.selectedCommunity);
+            if (!selectedData) return;
+
+            const domainColors = {
+                'housing': 'bg-orange-50 text-orange-700',
+                'economic': 'bg-blue-50 text-blue-700',
+                'default': 'bg-gray-50 text-gray-700'
+            };
+
+            Object.entries(appState.metaDomains).forEach(([domain, indicators]) => {
+                const colorClass = domainColors[domain.toLowerCase()] || domainColors['default'];
+
+                // Domain Header Row
+                const dRow = document.createElement('tr');
+                dRow.className = `${colorClass} font-bold`;
+                dRow.innerHTML = `<td colspan="4" class="px-4 py-2">${domain}</td>`;
+                tbody.appendChild(dRow);
+
+                indicators.forEach(ind => {
+                    const isExcluded = appState.excludedIndicators[domain].has(ind);
+                    const key = `${domain}_${ind}_${appState.scoreType}`;
+                    const val = selectedData[key];
+                    const weight = appState.weights[domain][ind] || 0;
+
+                    const row = document.createElement('tr');
+                    row.className = `border-b ${isExcluded ? 'opacity-40 bg-gray-100' : 'bg-white'}`;
+
+                    row.innerHTML = `
+                        <td class="px-4 py-2 text-xs text-gray-500"></td>
+                        <td class="px-4 py-2 font-medium text-gray-900">${ind} ${isExcluded ? '(Excluded)' : ''}</td>
+                        <td class="px-4 py-2 text-right font-mono">${(val || 0).toFixed(1)}</td>
+                        <td class="px-4 py-2 text-right text-xs text-gray-400">${(weight * 100).toFixed(0)}%</td>
+                    `;
+                    tbody.appendChild(row);
+                });
             });
         }
 
@@ -636,56 +777,76 @@
             const overallScore = calculateOverallScore(selectedData);
             document.getElementById('overall-score-display').textContent = overallScore.toFixed(1);
 
-            miniChartInstance.data.labels = Object.keys(domainScores);
-            miniChartInstance.data.datasets = [{
-                label: 'Domain Score',
-                data: Object.values(domainScores),
-                backgroundColor: Object.values(domainScores).map(v => v > 80 ? '#0d9488' : '#2dd4bf'),
-                borderRadius: 4
-            }];
-            miniChartInstance.update();
-
-            const avgScores = {};
-            Object.keys(currentDomains).forEach(d => {
-                const sum = appState.data.reduce((acc, curr) => acc + calculateDomainScore(curr, d), 0);
-                avgScores[d] = sum / (appState.data.length || 1);
-            });
-
-            radarChartInstance.data.labels = Object.keys(domainScores);
-            radarChartInstance.data.datasets = [
-                {
-                    label: appState.selectedCommunity,
+            // Defensive Check: If charts aren't ready, skip update to prevent crash
+            if (!miniChartInstance || !radarChartInstance || !comparisonChartInstance) {
+                console.warn("Skipping chart update. Instances:", {
+                    mini: !!miniChartInstance,
+                    radar: !!radarChartInstance,
+                    comp: !!comparisonChartInstance
+                });
+            } else {
+                console.log("Updating charts with new data...");
+                // Update Mini Chart
+                miniChartInstance.data.labels = Object.keys(domainScores);
+                miniChartInstance.data.datasets = [{
+                    label: 'Domain Score',
                     data: Object.values(domainScores),
-                    backgroundColor: CHART_COLORS.primary,
-                    borderColor: CHART_COLORS.primaryBorder,
-                    borderWidth: 2,
-                    pointBackgroundColor: CHART_COLORS.primaryBorder
-                },
-                {
-                    label: 'Territory Average',
-                    data: Object.values(avgScores),
-                    backgroundColor: CHART_COLORS.secondary,
-                    borderColor: CHART_COLORS.secondaryBorder,
-                    borderWidth: 1,
-                    pointBackgroundColor: CHART_COLORS.secondaryBorder,
-                    borderDash: [5, 5]
-                }
-            ];
-            radarChartInstance.update();
+                    backgroundColor: Object.values(domainScores).map(v => v > 80 ? '#0d9488' : '#2dd4bf'),
+                    borderRadius: 4
+                }];
+                miniChartInstance.update();
 
-            const comparisonData = appState.data.map(d => ({
-                label: d.Community,
-                score: calculateOverallScore(d)
-            }));
-            comparisonChartInstance.data.labels = comparisonData.map(d => d.label);
-            const bgColors = comparisonData.map(d => d.label === appState.selectedCommunity ? '#0d9488' : '#cbd5e1');
-            comparisonChartInstance.data.datasets = [{
-                label: 'Overall Index',
-                data: comparisonData.map(d => d.score),
-                backgroundColor: bgColors,
-                borderRadius: 4
-            }];
-            comparisonChartInstance.update();
+                // Update Main Chart (Now Grouped Bar)
+                const avgScores = {};
+                Object.keys(currentDomains).forEach(d => {
+                    const sum = appState.data.reduce((acc, curr) => acc + calculateDomainScore(curr, d), 0);
+                    avgScores[d] = sum / (appState.data.length || 1);
+                });
+
+                radarChartInstance.data.labels = Object.keys(domainScores);
+                radarChartInstance.data.datasets = [
+                    {
+                        label: appState.selectedCommunity,
+                        data: Object.values(domainScores),
+                        backgroundColor: CHART_COLORS.primaryBorder, // Solid teal
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Territory Average',
+                        data: Object.values(avgScores),
+                        backgroundColor: '#94a3b8', // Slate-400
+                        borderRadius: 4
+                    }
+                ];
+                radarChartInstance.update();
+
+                // Update Comparison Chart
+                // ... (Comparison logic is below, safe to let it fall through if inside else block, 
+                // but for simplicity, I'll keep the block structure clean)
+            }
+
+            // Update Comparison Chart (Defensive)
+            if (comparisonChartInstance) {
+                const comparisonData = appState.data.map(d => ({
+                    label: d.Community,
+                    score: calculateOverallScore(d)
+                }));
+                comparisonChartInstance.data.labels = comparisonData.map(d => d.label);
+                const bgColors = comparisonData.map(d => d.label === appState.selectedCommunity ? '#0d9488' : '#cbd5e1');
+                comparisonChartInstance.data.datasets = [{
+                    label: 'Overall Index',
+                    data: comparisonData.map(d => d.score),
+                    backgroundColor: bgColors,
+                    borderRadius: 4
+                }];
+                comparisonChartInstance.update();
+            }
+
+
+            // Refresh Table if open
+            if (!document.getElementById('details-table-container').classList.contains('hidden')) {
+                renderDetailsTable();
+            }
         }
     </script>
 </body>
